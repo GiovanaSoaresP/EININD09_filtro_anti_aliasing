@@ -42,6 +42,7 @@ void setup()
   ledcAttachPin(def_pin_PWM, 0);
   ledcSetup(0, 1000, 10);
   xTaskCreate(plotWave, "Task Wave", 4096, NULL, 1, NULL);
+  xTaskCreate(readTime, "Read Time", 4096, NULL, 1, NULL);  
 }
 
 AsyncDelay_c delayReadtWave(500, ISMILI); // time in micro second
