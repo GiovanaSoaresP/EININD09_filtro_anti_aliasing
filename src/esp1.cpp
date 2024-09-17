@@ -1,78 +1,54 @@
-#include "IiKit.h"
 #include <Arduino.h>
+#include "IiKit.h"
 
-typedef struct
-{
-  uint8_t pin;
-  TickType_t delay;
-} ledParameter_t;
+#define FREQ 50.0
+#define TIME_DELAY 100.0 // Time em microsegundos
+#define CILCE_FREQ (FREQ * TIME_DELAY / 1000000.0)
+#define CILCE_PERIODO (1.0 / CILCE_FREQ)
 
-void toggleLED(void *pinParameter) // Faz a mudança de estado de um led
+void plotWave(void *)
 {
-  const ledParameter_t ledParameter = *(ledParameter_t *)pinParameter;
+  uint16_t timeWave = 0;                          // Índice para percorrer a tabela de formas de onda
+  AsyncDelay_c delayPlotWave(TIME_DELAY, ISMICROS); // time in micro second
   for (;;)
   {
-    digitalWrite(ledParameter.pin, !digitalRead(ledParameter.pin));
-    vTaskDelay(ledParameter.delay / portTICK_PERIOD_MS);
+    if (delayPlotWave.isExpired())
+    {
+      delayPlotWave.repeat();
+      const double aux = 1.0 + sin(2.0 * PI * CILCE_FREQ * timeWave);
+      ledcWrite(0, uint16_t(511.0*aux));
+      dacWrite(def_pin_DAC1, uint8_t(127.0*aux));
+      if (++timeWave >= CILCE_PERIODO) timeWave = 0;
+    }
   }
 }
 
-AsyncDelay_c delayPOT(50); // time mili second
-void monitoraPOT(void)
+static uint32_t time_delay_analog_ms = 1;
+void readWave(void *)
 {
-  if (delayPOT.isExpired())
+  uint32_t previousTimeAnalogMS = 0;  
+  for (;;)
   {
-    delayPOT.repeat();
-
-    const uint16_t vlPOT1 = analogRead(def_pin_POT1);
-    const uint16_t vlPOT2 = analogRead(def_pin_POT2);
-    const uint16_t vlR4a20_1 = analogRead(def_pin_R4a20_1);
-    const uint16_t vlR4a20_2 = analogRead(def_pin_R4a20_2);
-
-    IIKit.disp.setText(2, ("P1:" + String(vlPOT1) + "  P2:" + String(vlPOT2)).c_str());
-    IIKit.disp.setText(3, ("T1:" + String(vlR4a20_1) + "  T2:" + String(vlR4a20_2)).c_str());    
-
-    IIKit.WSerial.plot("vlPOT1", vlPOT1);
-    IIKit.WSerial.plot("vlPOT2", vlPOT2);
-    IIKit.WSerial.plot("vlR4a20_1", vlR4a20_1);
-    IIKit.WSerial.plot("vlR4a20_2", vlR4a20_2);    
+    uint32_t currentMilis = millis();
+    if ((currentMilis - previousTimeAnalogMS) >= time_delay_analog_ms)
+    {
+      previousTimeAnalogMS = currentMilis;
+      analogRead(def_pin_DAC1);
+    }
   }
 }
 
 void setup()
 {
   IIKit.setup();
-
-  pinMode(def_pin_D1, OUTPUT);
-  pinMode(def_pin_D2, OUTPUT);
-  pinMode(def_pin_D3, OUTPUT);
-  pinMode(def_pin_D4, OUTPUT);
-
-  IIKit.WSerial.onInputReceived([](const std::string &str) {
-      if(str == "^q") IIKit.WSerial.stop(); 
-      else IIKit.WSerial.print(str.c_str()); 
-    }
-  );
-
-  IIKit.rtn_1.onValueChanged([](uint8_t status) {
-      digitalWrite(def_pin_D1,status);
-      IIKit.WSerial.println(status? "RTN1 ON" :"RTN1 OFF"); 
-    }
-  );
-
-  ledParameter_t led1 = {def_pin_D2, 500};  
-  xTaskCreate(
-      toggleLED,   // Function name
-      "Task LED1", // Task name
-      1000,        // Stack size
-      &led1,       // Task parameters
-      1,           // Task priority
-      NULL         // Task handle
-  );
+  ledcAttachPin(def_pin_PWM, 0);
+  ledcSetup(0, 1000, 10);
+  xTaskCreate(plotWave, "Task Wave", 5000, NULL, 1, NULL);
+  xTaskCreate(readWave, "Task Wave", 5000, NULL, 1, NULL);  
 }
 
 void loop()
 {
   IIKit.loop();
-  monitoraPOT();
+  time_delay_analog_ms = map(analogRead(def_pin_POT1), 0, 4095, 0, 120);
 }
