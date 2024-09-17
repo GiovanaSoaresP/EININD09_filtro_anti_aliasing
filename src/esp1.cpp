@@ -31,8 +31,8 @@ void readTime(void *)
 { 
   for (;;)
   {
-    time_delay_analog_ms = map(analogRead(def_pin_POT1), 0, 4095, 0, 20);
-    vTaskDelay(500 / portTICK_PERIOD_MS);
+    IIKit.WSerial.plot("var1",analogRead(def_pin_ADC1));
+    vTaskDelay(time_delay_analog_ms / portTICK_PERIOD_MS);
   }
 }
 
@@ -52,6 +52,6 @@ void loop()
   if (delayReadtWave.isExpired())
   {
     delayReadtWave.repeat();
-    time_delay_analog_ms = map(analogRead(def_pin_POT1), 0, 4095, 0, 120);
+    time_delay_analog_ms = map(analogRead(def_pin_POT1), 0, 4095, 0, 500);
   }
 }
