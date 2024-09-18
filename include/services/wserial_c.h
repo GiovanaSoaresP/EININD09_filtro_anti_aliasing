@@ -1,7 +1,7 @@
 #ifndef __WSERIAL_H
 #define __WSERIAL_H
 #include <Arduino.h>
-#include <AsyncTelnet.h>
+#include <TelnetPrint.h>
 
 #define BAUD_RATE 115200
 #define NEWLINE "\r\n"
@@ -9,18 +9,17 @@
 class WSerial_c
 {
 protected:
-  uint16_t server_port = 0;
-  AsyncTelnet *_telnet;
+  uint16_t server_port = 23;
   bool isClientConnected;
   std::function<void(std::string)> on_input;
   void start(uint16_t port, unsigned long baudrate = BAUD_RATE);
-  void update();  
+  void update();
 
 public:
   uint16_t serverPort() { return (server_port); }
   void stop();
-  friend inline void startWSerial(WSerial_c *ws,uint16_t port, unsigned long baudrate = BAUD_RATE);
-  friend inline void updateWSerial(WSerial_c *ws);   
+  friend inline void startWSerial(WSerial_c *ws, uint16_t port, unsigned long baudrate = BAUD_RATE);
+  friend inline void updateWSerial(WSerial_c *ws);
 
   template <typename T>
   void print(const T &data);
@@ -39,43 +38,44 @@ public:
 
 void WSerial_c::stop()
 {
-  _telnet->stop();
+  TelnetPrint.stop();
 }
 
-inline void startWSerial(WSerial_c *ws,uint16_t port, unsigned long baudrate){ws->start(port, baudrate);}
+inline void startWSerial(WSerial_c *ws, uint16_t port, unsigned long baudrate) { ws->start(port, baudrate); }
 void WSerial_c::start(uint16_t port, unsigned long baudrate)
 {
   if (isClientConnected)
   {
-    _telnet->stop();
-    delete (_telnet);
+    TelnetPrint.stop();
+    TelnetPrint.close();
+    TelnetPrint.end();
   }
   isClientConnected = false;
-  server_port = port;
   Serial.begin(baudrate);
-  _telnet = new AsyncTelnet(server_port);
-  Serial.println();
-  _telnet->onConnect([=](void *, AsyncClient *client)
-                     {
-            Serial.println("\nClient connected");
-            isClientConnected = true; });
-
-  _telnet->onDisconnect([=](AsyncClient *client)
-                        {
-            Serial.println("\nClient disconnected");
-            isClientConnected = false; });
-
-  _telnet->onIncomingData([=](const std::string &data)
-                          { print(data.c_str()); });
-  _telnet->begin(false, false);
-  println();
+  if (this->server_port != port)
+  {
+    server_port = port;
+    TelnetPrint = NetServer(port); // uncomment to change port
+  }
+  TelnetPrint.begin();
 }
 
-inline void updateWSerial(WSerial_c *ws) {ws->update();}
-void WSerial_c::update() {
-  if(!isClientConnected) {
-    if(Serial.available()) {
+inline void updateWSerial(WSerial_c *ws) { ws->update(); }
+
+void WSerial_c::update()
+{
+  if (!isClientConnected)
+  {
+    if (Serial.available())
+    {
       on_input(std::string((Serial.readStringUntil('\n')).c_str()));
+    }
+  }
+  else 
+  {
+    NetClient client = TelnetPrint.available();
+    if (client) {
+      on_input(std::string((client.readStringUntil('\n')).c_str()));
     }
   }
 }
@@ -83,7 +83,7 @@ void WSerial_c::update() {
 template <typename T>
 void WSerial_c::plot(const char *varName, T y, const char *unit)
 {
-  plot(varName,(TickType_t) xTaskGetTickCount(), y, unit);
+  plot(varName, (TickType_t)xTaskGetTickCount(), y, unit);
 }
 template <typename T>
 void WSerial_c::plot(const char *varName, TickType_t x, T y, const char *unit)
@@ -95,7 +95,7 @@ void WSerial_c::plot(const char *varName, TickType_t x, T y, const char *unit)
   str.concat(":");
   str.concat(y);
   str.concat(unit != NULL ? "§" : "");
-  str.concat(unit != NULL ? unit : "");  
+  str.concat(unit != NULL ? unit : "");
   str.concat("|g");
   println(str);
 }
@@ -103,32 +103,24 @@ void WSerial_c::plot(const char *varName, TickType_t x, T y, const char *unit)
 template <typename T>
 void WSerial_c::print(const T &data)
 {
-  if (isClientConnected)
-    _telnet->write(String(data).c_str());
-  else
-    Serial.print(data);
+  if (isClientConnected) TelnetPrint.print(data);
+  else Serial.print(data);
 }
 
 template <typename T>
 void WSerial_c::println(const T &data)
 {
-  String str(data);
-  str.concat(NEWLINE);
-  print(str);
+  if (isClientConnected) TelnetPrint.println(data);
+  else Serial.println(data);
 }
 void WSerial_c::println()
 {
-  if (isClientConnected)
-  {
-    _telnet->write(NEWLINE);
-  }
-  else
-    Serial.println();
+  if (isClientConnected) TelnetPrint.println();
+  else Serial.println();
 }
 
 void WSerial_c::onInputReceived(std::function<void(std::string)> callback)
 {
-  _telnet->onIncomingData(callback);
   on_input = callback;
 }
 
