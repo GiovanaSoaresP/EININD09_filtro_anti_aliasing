@@ -1,60 +1,37 @@
 #include <Arduino.h>
-#define ISMILI 0
-#define ISMICROS 1
 
 class AsyncDelay_c
 {
 protected:
-    uint64_t _expires = 0;
-    uint64_t _delay = 0;
+    unsigned long _expires = 0;
+    unsigned long _delay = 0;
 
 public:
-    AsyncDelay_c(const uint64_t &delay,uint8_t isMili=ISMILI);
-    void restart(const uint64_t &delay,uint8_t isMili=ISMILI);
+    AsyncDelay_c(const unsigned long &delay);
+    void restart(const unsigned long &delay);
     bool isExpired(void);
     void repeat(void);
 };
 
-inline AsyncDelay_c::AsyncDelay_c(const uint64_t &delay,uint8_t isMili)
+inline AsyncDelay_c::AsyncDelay_c(const unsigned long &delay)
 {
-    restart(delay,isMili);
+    restart(delay);
 }
 
-inline void AsyncDelay_c::restart(const uint64_t &delay,uint8_t isMili)
+inline void AsyncDelay_c::restart(const unsigned long &delay)
 {
-    if(isMili==ISMILI) _delay = delay * 1000;
-    else _delay = delay;
-    _expires = esp_timer_get_time();
+    _delay = delay;
+    _expires = xTaskGetTickCount() + _delay;
 }
 
 inline bool AsyncDelay_c::isExpired(void)
 {
-    return( (uint64_t) esp_timer_get_time() - _expires >= _delay);
+    bool resp = TickType_t(xTaskGetTickCount() - _expires) >= 0;
+    if(resp==true) repeat();
+    return(resp);
 }
 
 inline void AsyncDelay_c::repeat(void)
 {
     _expires += _delay;
 }
-
-
-
-class AsyncDelayMS_c : public AsyncDelay_c
-{
-protected:
-    uint64_t _expires = 0;
-    uint64_t _delay = 0;
-
-public:
-    AsyncDelayMS_c(const uint64_t &delay):AsyncDelay_c(delay,ISMILI){}
-};
-
-class AsyncDelayUS_c : public AsyncDelay_c
-{
-protected:
-    uint64_t _expires = 0;
-    uint64_t _delay = 0;
-
-public:
-    AsyncDelayUS_c(const uint64_t &delay):AsyncDelay_c(delay,ISMICROS){}
-};
